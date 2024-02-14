@@ -58,52 +58,25 @@ app.get('/data/price-list', async (req, res) => {
 	const chatId = parseInt(req.query.chatId);
 	try {
 		const priceList = await queryDatabase('SELECT * FROM `прейскурант`');
-		const productsInBasket = await queryDatabase(`SELECT * FROM \`Корзина\` WHERE \`ID чата\` = ${111111111}`)
-		const productCategories = await queryDatabase('SELECT * FROM `категории блюд`');
+		const productBasket = await queryDatabase(`SELECT * FROM \`Корзина\` WHERE \`ID чата\` = ${111111111}`)
 
+
+		for (let productIndex = 0; productIndex < priceList.length; productIndex++) {
+			for (let productIndexBasket = 0; productIndexBasket < productBasket.length; productIndexBasket++) {
+				if (chatId === productBasket[productIndexBasket]['ID чата'] && priceList[productIndex]['Название'] === productBasket[productIndexBasket]['Название товара']){
+					priceList[productIndex]["Количество в корзине"] = `${productBasket[productIndexBasket]['Количество']}`;
+				}
+			}
+		}
+		
 		priceList.forEach(item => {
 			if (item.Превью instanceof Buffer) {
 				item.Превью = item.Превью.toString('base64');
 			}
-		});
+		}); 
+		
+		res.json(priceList);
 
-		let showCase = `<div class='productList'>`;
-		
-		for (let categoryIndex = 0; categoryIndex < productCategories.length; categoryIndex++) {
-			showCase += `<div id=categoryCell_${productCategories[categoryIndex]['ID категории']}>
-			<h2 style="margin-left: 10px">${productCategories[categoryIndex]['Лого категории']} ${productCategories[categoryIndex]['Название категории']}</h2>\n
-			<div class='list'>`;
-			for (let productIndex = 0; productIndex < priceList.length; productIndex++) {
-				if (priceList[productIndex]['ID категории'] === productCategories[categoryIndex]['ID категории']) {
-					showCase += `<div class='cardProduct' id='${priceList[productIndex]['ID товара']}' onClick=popupShow>
-					<picture><img src='data:image/jpeg;base64,${priceList[productIndex]['Превью']}' alt=''></picture>
-					<h3 id='nameProduct'>
-					${priceList[productIndex]['Название']}
-					</h3>\n
-					<p id='descriptionProduct'>
-					${priceList[productIndex]['Описание']}
-					</p>\n
-					<div class='buttonSpace'>\n`;
-					let Flag = false;
-					for (let productIndexInBasket = 0; productIndexInBasket < productsInBasket.length; productIndexInBasket++) {
-						if (chatId === productsInBasket[productIndexInBasket]['ID чата'] & priceList[productIndex]['Название'] === productsInBasket[productIndexInBasket]['Название товара']) {
-							Flag = true;
-							showCase += `<button class="buttonRemove">-</button> <input class="quantity" readonly value = ${productsInBasket[productIndexInBasket]['Количество']}> <button class="buttonAdd">+</button>`;
-							break;
-						}
-					}
-					if (!Flag) {
-						showCase += `<button class="buttonAddToBasket">${priceList[productIndex]['Стоимость']}</button>`;
-					}
-					showCase += `</div>\n</div>\n`;
-				}
-			}
-			showCase += `</div>\n</div>\n`;
-		}
-		
-		showCase += `</div>\n`;
-		
-		res.json(showCase);
 	} catch (error) {
 		console.error('Error fetching data from MySQL:', error);
 		res.status(500).send('Error fetching data from MySQL');
