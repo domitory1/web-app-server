@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node connectionDB.js"
+    "start": "node queryToDB.js"
   },
   "author": "",
   "license": "ISC",
