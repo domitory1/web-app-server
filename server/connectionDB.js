@@ -26,7 +26,7 @@ const queryDatabase = async (query) => {
 }
 
 app.use(morgan('dev'));
-//app.use(morgan('combined'));
+// app.use(morgan('combined'));
 app.use(bodyParser.json());
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -59,8 +59,6 @@ app.get('/data/price-list', async (req, res) => {
 	try {
 		const priceList = await queryDatabase('SELECT * FROM `прейскурант`');
 		const productBasket = await queryDatabase(`SELECT * FROM \`Корзина\` WHERE \`ID чата\` = ${111111111}`)
-
-
 		for (let productIndex = 0; productIndex < priceList.length; productIndex++) {
 			for (let productIndexBasket = 0; productIndexBasket < productBasket.length; productIndexBasket++) {
 				if (chatId === productBasket[productIndexBasket]['ID чата'] && priceList[productIndex]['Название'] === productBasket[productIndexBasket]['Название товара']){
@@ -73,7 +71,7 @@ app.get('/data/price-list', async (req, res) => {
 			if (item.Превью instanceof Buffer) {
 				item.Превью = item.Превью.toString('base64');
 			}
-		}); 
+		});
 		
 		res.json(priceList);
 
@@ -90,7 +88,7 @@ app.post('/data/addToBusket', async (req, res) => {
 			`INSERT INTO корзина (\`ID чата\`, \`Название товара\`, \`Количество\`, \`Стоимость\`) VALUES ('${chatId}', '${productName}', '${productQuantity}', '${productPrice}')`
 		);
 		res.status(200).json({
-			buttonSpace: '<button class="buttonRemove">-</button> <input class="quantity" readonly value = 1> <button class="buttonAdd">+</button>'
+			contentButtonSpace: '<button class="buttonReduce">-</button> <input class="quantity" readonly value = 1> <button class="buttonIncrease">+</button>'
 		});
 	} catch (error) {
 		console.error('Error adding item to MySQL:', error);
@@ -132,8 +130,7 @@ app.post('/data/reduceNumber', async (req, res) => {
 				`DELETE FROM \`корзина\` WHERE \`ID чата\` = ${chatId} AND \`Название товара\` = '${productName}'`
 			);
 			res.status(200).json({
-				status: '',
-				buttonSpace: `<button class="buttonAddToBasket">${quantity[0]['Стоимость']}</button>`
+				contentButtonSpace: `<button class="buttonAddToBusket">${quantity[0]['Стоимость']} ₽</button>`
 			});
 		}
 
