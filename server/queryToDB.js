@@ -3,8 +3,15 @@ const morgan = require('morgan');
 const mysql = require('mysql2/promise');
 const bodyParser = require('body-parser');
 
-
 const app = express();
+app.use(morgan('dev'));
+//app.use(morgan('combined'));
+app.use(bodyParser.json());
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+	res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    next();
+});
 
 const pool = mysql.createPool({
 	host: '127.0.0.1',
@@ -12,7 +19,7 @@ const pool = mysql.createPool({
 	password: 'root',
 	database: 'webappmenu',
 	charset: 'utf8mb4',
-	connectionLimit: 10 // max количество соединений в пуле
+	connectionLimit: 10
 });
 
 const queryDatabase = async (query) => {
@@ -25,15 +32,6 @@ const queryDatabase = async (query) => {
 	}
 }
 
-app.use(morgan('dev'));
-// app.use(morgan('combined'));
-app.use(bodyParser.json());
-app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-	res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-    next();
-});
-
 pool.getConnection()
 	.then(connection => {
 		console.log('Connection to MySQL database');
@@ -43,48 +41,63 @@ pool.getConnection()
 		console.log('Error connection to MySQL: ', error);
 	});
 
-app.get('/data/food-categories', async (req, res) => {
-	try {
-	 	const results = await queryDatabase('SELECT * FROM `категории блюд`');
-	  	res.json(results);
-	} catch (error) {
-	  	console.error('Error fetching data from MySQL:', error);
-	  	res.status(500).send('Error fetching data from MySQL');
-	}
-});
+app.use(bodyParser.urlencoded({ extended: false }));
 
 app.get('/data/price-list', async (req, res) => {
 	const chatId = parseInt(req.query.chatId);
 	try {
+		const productCategory = await queryDatabase('SELECT * FROM `категории блюд`');
 		const priceList = await queryDatabase('SELECT * FROM `прейскурант`');
-		const productBasket = await queryDatabase(`SELECT * FROM \`Корзина\` WHERE \`ID чата\` = ${111111111}`)
+		const productInBusket = await queryDatabase(`SELECT * FROM \`Корзина\` WHERE \`ID чата\` = ${chatId}`)
 		for (let productIndex = 0; productIndex < priceList.length; productIndex++) {
-			for (let productIndexBasket = 0; productIndexBasket < productBasket.length; productIndexBasket++) {
-				if (chatId === productBasket[productIndexBasket]['ID чата'] && priceList[productIndex]['Название'] === productBasket[productIndexBasket]['Название товара']){
-					priceList[productIndex]["Количество в корзине"] = `${productBasket[productIndexBasket]['Количество']}`;
+			for (let productIndexBusket = 0; productIndexBusket < productInBusket.length; productIndexBusket++) {
+				if (chatId === productInBusket[productIndexBusket]['ID чата'] && priceList[productIndex]['ID товара'] === productInBusket[productIndexBusket]['ID товара']){
+					priceList[productIndex]["Количество"] = `${productInBusket[productIndexBusket]['Количество']}`;
 				}
 			}
 		}
-		
+
 		priceList.forEach(item => {
 			if (item.Превью instanceof Buffer) {
 				item.Превью = item.Превью.toString('base64');
 			}
 		});
-		
-		res.json(priceList);
-
+		res.json([productCategory, priceList]);
 	} catch (error) {
 		console.error('Error fetching data from MySQL:', error);
 		res.status(500).send('Error fetching data from MySQL');
 	}
 });
 
+app.get('/data/productInBusket', async(req, res) => {
+	const chatId = parseInt(req.query.chatId);
+	try {
+		const productsInBusket = await queryDatabase(`SELECT \`ID товара\`, \`Количество\` FROM \`корзина\` WHERE \`ID чата\` = ${chatId}`);
+		const result = await queryDatabase(`SELECT * FROM \`прейскурант\` WHERE \`ID товара\` IN (${productsInBusket.map(item => item['ID товара'])})`);
+		for (let i=0; i < productsInBusket.length; i++) {
+			for (let j=0; j < result.length; j++) {
+				if (productsInBusket[i]['ID товара'] === result[j]['ID товара']) {
+					result[j]['Количество'] = productsInBusket[i]['Количество'];
+				}
+			}
+		}
+		result.forEach(item => {
+			if (item.Превью instanceof Buffer) {
+				item.Превью = item.Превью.toString('base64');
+			}
+		});
+		res.json(result);
+	} catch (error) {
+		console.error('Error fetching data from MySQL:', error);
+		res.status(500).send('Error fetching data from MySQL');
+	}
+})
+
 app.post('/data/addToBusket', async (req, res) => {
-	const { chatId, productName, productQuantity, productPrice } = req.body;
+	const { chatId, productId, productQuantity } = req.body;
 	try {
 		const result = await queryDatabase(
-			`INSERT INTO корзина (\`ID чата\`, \`Название товара\`, \`Количество\`, \`Стоимость\`) VALUES ('${chatId}', '${productName}', '${productQuantity}', '${productPrice}')`
+			`INSERT INTO корзина (\`ID чата\`, \`ID товара\`, \`Количество\`) VALUES ('${chatId}', '${productId}', '${productQuantity}')`
 		);
 		res.status(200).json({
 			contentButtonSpace: '<button class="buttonReduce">-</button> <input class="quantity" readonly value = 1> <button class="buttonIncrease">+</button>'
@@ -96,12 +109,12 @@ app.post('/data/addToBusket', async (req, res) => {
 });
 
 app.post('/data/increaseQuantity', async (req, res) => {
-	const { chatId, productName } = req.body;
+	const { chatId, productId } = req.body;
 	try {
 		await queryDatabase(
-			`UPDATE корзина SET \`Количество\` = \`Количество\` + 1 WHERE \`ID чата\` = ${chatId} AND \`Название товара\` = '${productName}'`
+			`UPDATE корзина SET \`Количество\` = \`Количество\` + 1 WHERE \`ID чата\` = ${chatId} AND \`ID товара\` = '${productId}'`
 		);
-		const quantity = await queryDatabase(`SELECT \`Количество\` FROM \`корзина\` WHERE \`ID чата\` = ${chatId} AND \`Название товара\` = '${productName}'`)
+		const quantity = await queryDatabase(`SELECT \`Количество\` FROM \`корзина\` WHERE \`ID чата\` = ${chatId} AND \`ID товара\` = '${productId}'`)
 		res.status(200).json({
 			quantity: quantity[0]['Количество']
 		});
@@ -112,13 +125,13 @@ app.post('/data/increaseQuantity', async (req, res) => {
 });
 
 app.post('/data/reduceNumber', async (req, res) => {
-	const { chatId, productName } = req.body;
+	const { chatId, productId } = req.body;
 	try {
 		await queryDatabase(
-			`UPDATE корзина SET \`Количество\` = if(\`Количество\` != 0, \`Количество\` - 1, 0) WHERE \`ID чата\` = ${chatId} AND \`Название товара\` = '${productName}'`
+			`UPDATE корзина SET \`Количество\` = if(\`Количество\` != 0, \`Количество\` - 1, 0) WHERE \`ID чата\` = ${chatId} AND \`ID товара\` = '${productId}'`
 		);
 		const quantity = await queryDatabase(
-			`SELECT \`Количество\`, \`Стоимость\` FROM \`корзина\` WHERE \`ID чата\` = ${chatId} AND \`Название товара\` = '${productName}'`
+			`SELECT \`Количество\` FROM \`корзина\` WHERE \`ID чата\` = ${chatId} AND \`ID товара\` = '${productId}'`
 		);
 		if (quantity[0]['Количество'] != 0){
 			res.status(200).json({
@@ -126,10 +139,13 @@ app.post('/data/reduceNumber', async (req, res) => {
 			});
 		} else {
 			await queryDatabase(
-				`DELETE FROM \`корзина\` WHERE \`ID чата\` = ${chatId} AND \`Название товара\` = '${productName}'`
+				`DELETE FROM \`корзина\` WHERE \`ID чата\` = ${chatId} AND \`ID товара\` = '${productId}'`
+			);
+			const price = await queryDatabase(
+				`SELECT \`Стоимость\` FROM \`прейскурант\` WHERE  \`ID товара\` = '${productId}'`
 			);
 			res.status(200).json({
-				contentButtonSpace: `<button class="buttonAddToBusket">${quantity[0]['Стоимость']} ₽</button>`
+				contentButtonSpace: `<button class="buttonAddToBusket">${price[0]['Стоимость']} ₽</button>`
 			});
 		}
 
