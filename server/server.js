@@ -44,22 +44,21 @@ pool.getConnection()
 app.use(bodyParser.urlencoded({ extended: false }));
 
 app.get('/data/price-list', async (req, res) => {
-	const chatId = parseInt(req.query.chatId);
+	const userId = parseInt(req.query.userId);
 	try {
-		const productCategory = await queryDatabase('SELECT * FROM `категории блюд`');
-		const priceList = await queryDatabase('SELECT * FROM `прейскурант`');
-		const productInBusket = await queryDatabase(`SELECT * FROM \`Корзина\` WHERE \`ID чата\` = ${chatId}`)
+		const productCategory = await queryDatabase('SELECT * FROM `categories`');
+		const priceList = await queryDatabase('SELECT * FROM `pricelist`');
+		const productInBusket = await queryDatabase(`SELECT * FROM \`busket\` WHERE \`UserId\` = ${userId}`)
 		for (let productIndex = 0; productIndex < priceList.length; productIndex++) {
 			for (let productIndexBusket = 0; productIndexBusket < productInBusket.length; productIndexBusket++) {
-				if (chatId === productInBusket[productIndexBusket]['ID чата'] && priceList[productIndex]['ID товара'] === productInBusket[productIndexBusket]['ID товара']){
-					priceList[productIndex]["Количество"] = `${productInBusket[productIndexBusket]['Количество']}`;
+				if (userId === productInBusket[productIndexBusket]['UserId'] && priceList[productIndex]['ProductId'] === productInBusket[productIndexBusket]['ProductId']){
+					priceList[productIndex]["Quantity"] = `${productInBusket[productIndexBusket]['Quantity']}`;
 				}
 			}
 		}
-
 		priceList.forEach(item => {
-			if (item.Превью instanceof Buffer) {
-				item.Превью = item.Превью.toString('base64');
+			if (item.ProductPhoto instanceof Buffer) {
+				item.ProductPhoto = item.ProductPhoto.toString('base64');
 			}
 		});
 		res.json([productCategory, priceList]);
@@ -70,23 +69,28 @@ app.get('/data/price-list', async (req, res) => {
 });
 
 app.get('/data/productInBusket', async(req, res) => {
-	const chatId = parseInt(req.query.chatId);
+	const userId = parseInt(req.query.userId);
 	try {
-		const productsInBusket = await queryDatabase(`SELECT \`ID товара\`, \`Количество\` FROM \`корзина\` WHERE \`ID чата\` = ${chatId}`);
-		const result = await queryDatabase(`SELECT * FROM \`прейскурант\` WHERE \`ID товара\` IN (${productsInBusket.map(item => item['ID товара'])})`);
-		for (let i=0; i < productsInBusket.length; i++) {
-			for (let j=0; j < result.length; j++) {
-				if (productsInBusket[i]['ID товара'] === result[j]['ID товара']) {
-					result[j]['Количество'] = productsInBusket[i]['Количество'];
+		const productsInBusket = await queryDatabase(`SELECT \`ProductId\`, \`Quantity\` FROM \`busket\` WHERE \`UserId\` = ${userId}`);
+		if (productsInBusket.length > 0) {
+			const result = await queryDatabase(`SELECT * FROM \`pricelist\` WHERE \`ProductId\` IN (${productsInBusket.map(item => item['ProductId'])})`);
+			for (let i=0; i < productsInBusket.length; i++) {
+				for (let j=0; j < result.length; j++) {
+					if (productsInBusket[i]['ProductId'] === result[j]['ProductId']) {
+						result[j]['Quantity'] = productsInBusket[i]['Quantity'];
+					}
 				}
 			}
+			result.forEach(item => {
+				if (item.ProductPhoto instanceof Buffer) {
+					item.ProductPhoto = item.ProductPhoto.toString('base64');
+				}
+			});
+			res.status(200).json(result);
+		} else {
+			res.status(200).json([]);
 		}
-		result.forEach(item => {
-			if (item.Превью instanceof Buffer) {
-				item.Превью = item.Превью.toString('base64');
-			}
-		});
-		res.json(result);
+		
 	} catch (error) {
 		console.error('Error fetching data from MySQL:', error);
 		res.status(500).send('Error fetching data from MySQL');
@@ -94,10 +98,10 @@ app.get('/data/productInBusket', async(req, res) => {
 })
 
 app.post('/data/addToBusket', async (req, res) => {
-	const { chatId, productId, productQuantity } = req.body;
+	const { userId, productId, productQuantity } = req.body;
 	try {
 		const result = await queryDatabase(
-			`INSERT INTO корзина (\`ID чата\`, \`ID товара\`, \`Количество\`) VALUES ('${chatId}', '${productId}', '${productQuantity}')`
+			`INSERT INTO busket (\`UserId\`, \`ProductId\`, \`Quantity\`) VALUES ('${userId}', '${productId}', '${productQuantity}')`
 		);
 		res.status(200).json({
 			contentButtonSpace: '<button class="buttonReduce">-</button> <input class="quantity" readonly value = 1> <button class="buttonIncrease">+</button>'
@@ -109,14 +113,14 @@ app.post('/data/addToBusket', async (req, res) => {
 });
 
 app.post('/data/increaseQuantity', async (req, res) => {
-	const { chatId, productId } = req.body;
+	const { userId, productId } = req.body;
 	try {
 		await queryDatabase(
-			`UPDATE корзина SET \`Количество\` = \`Количество\` + 1 WHERE \`ID чата\` = ${chatId} AND \`ID товара\` = '${productId}'`
+			`UPDATE busket SET \`Quantity\` = \`Quantity\` + 1 WHERE \`UserId\` = ${userId} AND \`ProductId\` = '${productId}'`
 		);
-		const quantity = await queryDatabase(`SELECT \`Количество\` FROM \`корзина\` WHERE \`ID чата\` = ${chatId} AND \`ID товара\` = '${productId}'`)
+		const quantity = await queryDatabase(`SELECT \`Quantity\` FROM \`busket\` WHERE \`UserId\` = ${userId} AND \`ProductId\` = '${productId}'`)
 		res.status(200).json({
-			quantity: quantity[0]['Количество']
+			quantity: quantity[0]['Quantity']
 		});
 	} catch (error) {
 		console.error('Error adding item to MySQL:', error);
@@ -125,27 +129,27 @@ app.post('/data/increaseQuantity', async (req, res) => {
 });
 
 app.post('/data/reduceNumber', async (req, res) => {
-	const { chatId, productId } = req.body;
+	const { userId, productId } = req.body;
 	try {
 		await queryDatabase(
-			`UPDATE корзина SET \`Количество\` = if(\`Количество\` != 0, \`Количество\` - 1, 0) WHERE \`ID чата\` = ${chatId} AND \`ID товара\` = '${productId}'`
+			`UPDATE busket SET \`Quantity\` = if(\`Quantity\` != 0, \`Quantity\` - 1, 0) WHERE \`UserId\` = ${userId} AND \`ProductId\` = '${productId}'`
 		);
 		const quantity = await queryDatabase(
-			`SELECT \`Количество\` FROM \`корзина\` WHERE \`ID чата\` = ${chatId} AND \`ID товара\` = '${productId}'`
+			`SELECT \`Quantity\` FROM \`busket\` WHERE \`UserId\` = ${userId} AND \`ProductId\` = '${productId}'`
 		);
-		if (quantity[0]['Количество'] != 0){
+		if (quantity[0]['Quantity'] != 0){
 			res.status(200).json({
-				quantity: quantity[0]['Количество']
+				quantity: quantity[0]['Quantity']
 			});
 		} else {
 			await queryDatabase(
-				`DELETE FROM \`корзина\` WHERE \`ID чата\` = ${chatId} AND \`ID товара\` = '${productId}'`
+				`DELETE FROM \`busket\` WHERE \`UserId\` = ${userId} AND \`ProductId\` = '${productId}'`
 			);
 			const price = await queryDatabase(
-				`SELECT \`Стоимость\` FROM \`прейскурант\` WHERE  \`ID товара\` = '${productId}'`
+				`SELECT \`ProductPrice\` FROM \`pricelist\` WHERE  \`ProductId\` = '${productId}'`
 			);
 			res.status(200).json({
-				contentButtonSpace: `<button class="buttonAddToBusket">${price[0]['Стоимость']} ₽</button>`
+				contentButtonSpace: `<button class="buttonAddToBusket">${price[0]['ProductPrice']} ₽</button>`
 			});
 		}
 
