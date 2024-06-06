@@ -8,6 +8,7 @@ app.use(morgan('dev'));
 //app.use(morgan('combined'));
 app.use(bodyParser.json());
 app.use((req, res, next) => {
+	// Разрешаем все источники (*)
     res.header('Access-Control-Allow-Origin', '*');
 	res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
     next();
