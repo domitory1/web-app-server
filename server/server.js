@@ -15,7 +15,7 @@ app.use((req, res, next) => {
 	res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
 	res.header('Access-Control-Allow-Headers', 'Authorization, Origin, X-Requested-With, Content-Type, Accept');
     if (req.method === 'OPTIONS') {
-		return res.status(200);
+		return res.sendStatus(200);
 	}
 	next();
 });
@@ -65,8 +65,7 @@ pool.getConnection()
 app.use(bodyParser.urlencoded({ extended: false }));
 
 app.get('/data/price-list', authentificateToken, async (req, res) => {
-	console.log('knok-knok', req);
-	const userId = parseInt(req.user['id']);
+	const userId = parseInt(req.user.user['id']);
 
 	try {
 		const productCategory = await queryDatabase('SELECT * FROM `categories`');
@@ -87,12 +86,12 @@ app.get('/data/price-list', authentificateToken, async (req, res) => {
 		res.json([productCategory, priceList]);
 	} catch (error) {
 		console.error('Error fetching data from MySQL:', error);
-		res.status(500).json({err: 'Ой-ой, кажется, наш сервер решил устроить себе небольшую перерывчик на кофе! Он так старательно собирал информацию о ваших любимых блюдах, что немного перестарался. Обещаем, что наш трудоголик скоро вернется к работе, полный сил и энтузиазма!'});
+		res.status(500).json({err: 'Ой-ой, кажется, наш сервер решил устроить себе небольшой перерывчик на кофе! Он так старательно собирал информацию о ваших любимых блюдах, что немного перестарался. Обещаем, что наш трудоголик скоро вернется к работе, полный сил и энтузиазма!'});
 	}
 });
 
-app.get('/data/productInBusket', async(req, res) => {
-	const userId = parseInt(req.query.userId);
+app.get('/data/productInBusket', authentificateToken, async(req, res) => {
+	const userId = parseInt(req.user.user['id']);
 	try {
 		const productsInBusket = await queryDatabase(`SELECT \`ProductId\`, \`Quantity\` FROM \`busket\` WHERE \`UserId\` = ${userId}`);
 		if (productsInBusket.length > 0) {
@@ -120,8 +119,9 @@ app.get('/data/productInBusket', async(req, res) => {
 	}
 })
 
-app.post('/data/addToBusket', async (req, res) => {
-	const { userId, productId } = req.body;
+app.post('/data/addToBusket', authentificateToken, async (req, res) => {
+	const userId = req.user.user['id'];
+	const productId = req.body['productId'];
 	try {
 		const result = await queryDatabase(
 			`INSERT INTO busket (\`UserId\`, \`ProductId\`, \`Quantity\`) VALUES ('${userId}', '${productId}', 1)`
@@ -136,8 +136,9 @@ app.post('/data/addToBusket', async (req, res) => {
 	}
 });
 
-app.post('/data/increaseQuantity', async (req, res) => {
-	const { userId, productId } = req.body;
+app.post('/data/increaseQuantity', authentificateToken, async (req, res) => {
+	const userId = req.user.user['id'];
+	const productId  = req.body['productId'];
 	try {
 		await queryDatabase(
 			`UPDATE busket SET \`Quantity\` = \`Quantity\` + 1 WHERE \`UserId\` = ${userId} AND \`ProductId\` = '${productId}'`
@@ -152,8 +153,9 @@ app.post('/data/increaseQuantity', async (req, res) => {
 	}
 });
 
-app.post('/data/reduceNumber', async (req, res) => {
-	const { userId, productId } = req.body;
+app.post('/data/reduceNumber', authentificateToken, async (req, res) => {
+	const userId = req.user.user['id'];
+	const productId = req.body['productId'];
 	try {
 		await queryDatabase(
 			`UPDATE busket SET \`Quantity\` = if(\`Quantity\` != 0, \`Quantity\` - 1, 0) WHERE \`UserId\` = ${userId} AND \`ProductId\` = '${productId}'`
