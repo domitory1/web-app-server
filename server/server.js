@@ -2,17 +2,25 @@ const express = require('express');
 const morgan = require('morgan');
 const mysql = require('mysql2/promise');
 const bodyParser = require('body-parser');
-
+const jwt = require('jsonwebtoken');
 const app = express();
+
 app.use(morgan('dev'));
 //app.use(morgan('combined'));
 app.use(bodyParser.json());
+app.use(express.json());
+// Настроить CORS на принятие запросов только с определенного домена
 app.use((req, res, next) => {
-	// Разрешаем все источники (*)
     res.header('Access-Control-Allow-Origin', '*');
-	res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-    next();
+	res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+	res.header('Access-Control-Allow-Headers', 'Authorization, Origin, X-Requested-With, Content-Type, Accept');
+    if (req.method === 'OPTIONS') {
+		return res.status(200);
+	}
+	next();
 });
+
+const JWT_KEY = 'kasdu23K&w';
 
 const pool = mysql.createPool({
 	host: '127.0.0.1',
@@ -20,7 +28,7 @@ const pool = mysql.createPool({
 	password: 'root',
 	database: 'webappmenu',
 	charset: 'utf8mb4',
-	connectionLimit: 10
+	connectionLimit: 10,
 });
 
 const queryDatabase = async (query) => {
@@ -31,6 +39,18 @@ const queryDatabase = async (query) => {
 	} finally {
 		connection.release();
 	}
+}
+
+function authentificateToken(req, res, next) {
+	const authHeader = req.headers['authorization'];
+	const token = authHeader && authHeader.split(' ')[1];
+	if (token == null) return res.sendStatus(401);
+
+	jwt.verify(token, JWT_KEY, (err, user) => {
+		if (err) return res.sendStatus(403);
+		req.user = user;
+		next();
+	});
 }
 
 pool.getConnection()
@@ -44,8 +64,10 @@ pool.getConnection()
 
 app.use(bodyParser.urlencoded({ extended: false }));
 
-app.get('/data/price-list', async (req, res) => {
-	const userId = parseInt(req.query.userId);
+app.get('/data/price-list', authentificateToken, async (req, res) => {
+	console.log('knok-knok', req);
+	const userId = parseInt(req.user['id']);
+
 	try {
 		const productCategory = await queryDatabase('SELECT * FROM `categories`');
 		const priceList = await queryDatabase('SELECT * FROM `pricelist`');
@@ -65,7 +87,7 @@ app.get('/data/price-list', async (req, res) => {
 		res.json([productCategory, priceList]);
 	} catch (error) {
 		console.error('Error fetching data from MySQL:', error);
-		res.status(500).send('Error fetching data from MySQL');
+		res.status(500).json({err: 'Ой-ой, кажется, наш сервер решил устроить себе небольшую перерывчик на кофе! Он так старательно собирал информацию о ваших любимых блюдах, что немного перестарался. Обещаем, что наш трудоголик скоро вернется к работе, полный сил и энтузиазма!'});
 	}
 });
 
@@ -99,11 +121,12 @@ app.get('/data/productInBusket', async(req, res) => {
 })
 
 app.post('/data/addToBusket', async (req, res) => {
-	const { userId, productId, productQuantity } = req.body;
+	const { userId, productId } = req.body;
 	try {
 		const result = await queryDatabase(
-			`INSERT INTO busket (\`UserId\`, \`ProductId\`, \`Quantity\`) VALUES ('${userId}', '${productId}', '${productQuantity}')`
+			`INSERT INTO busket (\`UserId\`, \`ProductId\`, \`Quantity\`) VALUES ('${userId}', '${productId}', 1)`
 		);
+		// Вспомнить, используется ли contentButtonSpace
 		res.status(200).json({
 			contentButtonSpace: '<button class="buttonReduce">-</button> <input class="quantity" readonly value = 1> <button class="buttonIncrease">+</button>'
 		});
@@ -149,6 +172,7 @@ app.post('/data/reduceNumber', async (req, res) => {
 			const price = await queryDatabase(
 				`SELECT \`ProductPrice\` FROM \`pricelist\` WHERE  \`ProductId\` = '${productId}'`
 			);
+			// Вспомнить, используется ли contentButtonSpace
 			res.status(200).json({
 				contentButtonSpace: `<button class="buttonAddToBusket">${price[0]['ProductPrice']} ₽</button>`
 			});
