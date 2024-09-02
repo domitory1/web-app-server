@@ -9,18 +9,15 @@ app.use(morgan('dev'));
 //app.use(morgan('combined'));
 app.use(bodyParser.json());
 app.use(express.json());
-// Настроить CORS на принятие запросов только с определенного домена
+
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
 	res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
 	res.header('Access-Control-Allow-Headers', 'Authorization, Origin, X-Requested-With, Content-Type, Accept');
-    if (req.method === 'OPTIONS') {
-		return res.sendStatus(200);
-	}
 	next();
 });
 
-const JWT_KEY = 'kasdu23K&w';
+const JWT_KEY = 'FMXF15Uz-m6*P0bVh-5&7Se*nf-ow!HXwbi';
 
 const pool = mysql.createPool({
 	host: '127.0.0.1',
@@ -46,9 +43,18 @@ function authentificateToken(req, res, next) {
 	const token = authHeader && authHeader.split(' ')[1];
 	if (token == null) return res.sendStatus(401);
 
-	jwt.verify(token, JWT_KEY, (err, user) => {
-		if (err) return res.sendStatus(403);
-		req.user = user;
+	jwt.verify(token, JWT_KEY, (err, jwt) => {
+		if (err){
+			console.log(err);
+			return res.sendStatus(401)
+		};
+		if (jwt.type === 'refresh') {
+			console.log("TokenNotValidError: jwt is refresh")
+			return res.sendStatus(401);
+		};
+		const JWTInDB = queryDatabase(`SELECT \`JTI\` FROM \`jwt_whitelist\` WHERE \`JTI\` = '${jwt.jti}'`);
+		if (JWTInDB === null) return res.sendStatus(401);
+		req.jwt = jwt;
 		next();
 	});
 }
@@ -64,8 +70,8 @@ pool.getConnection()
 
 app.use(bodyParser.urlencoded({ extended: false }));
 
-app.get('/data/price-list', authentificateToken, async (req, res) => {
-	const userId = parseInt(req.user.user['id']);
+app.get('/data/priceList', authentificateToken, async (req, res) => {
+	const userId = parseInt(req.jwt.user['id']);
 
 	try {
 		const productCategory = await queryDatabase('SELECT * FROM `categories`');
@@ -91,7 +97,7 @@ app.get('/data/price-list', authentificateToken, async (req, res) => {
 });
 
 app.get('/data/productInBusket', authentificateToken, async(req, res) => {
-	const userId = parseInt(req.user.user['id']);
+	const userId = parseInt(req.jwt.user['id']);
 	try {
 		const productsInBusket = await queryDatabase(`SELECT \`ProductId\`, \`Quantity\` FROM \`busket\` WHERE \`UserId\` = ${userId}`);
 		if (productsInBusket.length > 0) {
@@ -115,12 +121,12 @@ app.get('/data/productInBusket', authentificateToken, async(req, res) => {
 		
 	} catch (error) {
 		console.error('Error fetching data from MySQL:', error);
-		res.status(500).send('Error fetching data from MySQL');
+		res.status(500).send({err: 'Ой-ой, кажется, наш сервер решил устроить себе небольшой перерывчик на кофе! Он так старательно собирал информацию о ваших любимых блюдах, что немного перестарался. Обещаем, что наш трудоголик скоро вернется к работе, полный сил и энтузиазма!'});
 	}
 })
 
 app.post('/data/addToBusket', authentificateToken, async (req, res) => {
-	const userId = req.user.user['id'];
+	const userId = req.jwt.user['id'];
 	const productId = req.body['productId'];
 	try {
 		const result = await queryDatabase(
@@ -132,12 +138,12 @@ app.post('/data/addToBusket', authentificateToken, async (req, res) => {
 		});
 	} catch (error) {
 		console.error('Error adding item to MySQL:', error);
-		res.status(500).send('Error adding item to MySQL');
+		res.status(500).send({err: 'Ой-ой, кажется, наш сервер решил устроить себе небольшой перерывчик на кофе! Он так старательно добавлял блюда в корзину, что немного перестарался. Обещаем, что наш трудоголик скоро вернется к работе, полный сил и энтузиазма!'});
 	}
 });
 
 app.post('/data/increaseQuantity', authentificateToken, async (req, res) => {
-	const userId = req.user.user['id'];
+	const userId = req.jwt.user['id'];
 	const productId  = req.body['productId'];
 	try {
 		await queryDatabase(
@@ -149,12 +155,12 @@ app.post('/data/increaseQuantity', authentificateToken, async (req, res) => {
 		});
 	} catch (error) {
 		console.error('Error adding item to MySQL:', error);
-		res.status(500).send('Error adding item to MySQL');
+		res.status(500).send({err: 'Ой-ой, кажется, наш сервер решил устроить себе небольшой перерывчик на кофе! Он так старательно добавлял блюда в корзину, что немного перестарался. Обещаем, что наш трудоголик скоро вернется к работе, полный сил и энтузиазма!'});
 	}
 });
 
 app.post('/data/reduceNumber', authentificateToken, async (req, res) => {
-	const userId = req.user.user['id'];
+	const userId = req.jwt.user['id'];
 	const productId = req.body['productId'];
 	try {
 		await queryDatabase(
@@ -182,12 +188,12 @@ app.post('/data/reduceNumber', authentificateToken, async (req, res) => {
 
 	} catch (error) {
 		console.error('Error adding item to MySQL:', error);
-		res.status(500).send('Error adding item to MySQL');
+		res.status(500).send({err: 'Ой-ой, кажется, наш сервер решил устроить себе небольшой перерывчик на кофе! Он так старательно убирал блюда из корзины, что немного перестарался. Обещаем, что наш трудоголик скоро вернется к работе, полный сил и энтузиазма!'});
 	}
 });
 
-app.listen(3001, () => {
-  	console.log('Server running on port 3001');
+app.listen(3002, () => {
+  	console.log('Server running on port 3002');
 });
 
 process.on('SIGINT', () => {
