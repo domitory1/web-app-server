@@ -180,7 +180,6 @@ app.post('/data/reduceNumber', authentificateToken, async (req, res) => {
 			const price = await queryDatabase(
 				`SELECT \`ProductPrice\` FROM \`pricelist\` WHERE  \`ProductId\` = '${productId}'`
 			);
-			// Вспомнить, используется ли contentButtonSpace
 			res.status(200).json({
 				contentButtonSpace: `<button class="buttonAddToBusket">${price[0]['ProductPrice']} ₽</button>`
 			});
@@ -191,6 +190,28 @@ app.post('/data/reduceNumber', authentificateToken, async (req, res) => {
 		res.status(500).send({err: 'Ой-ой, кажется, наш сервер решил устроить себе небольшой перерывчик на кофе! Он так старательно убирал блюда из корзины, что немного перестарался. Обещаем, что наш трудоголик скоро вернется к работе, полный сил и энтузиазма!'});
 	}
 });
+
+app.get("/data/order", authentificateToken, async(req, res) => {
+	const userId = req.jwt.user['id'];
+	const hour = req['_startTime'].getHours();
+	const minutes = req['_startTime'].getMinutes();
+
+	if (hour < 8 && minutes < 30 && hour > 17 && minutes > 30) {
+		res.status(503).send("Сервер спит после тяжелого рабочего дня.\nПопробуйте еще раз в рабочее время");
+	}
+
+	const data = await queryDatabase(
+		`SELECT p.ProductPrice, b.Quantity FROM priceList p JOIN busket b ON p.ProductId = b.ProductId WHERE b.UserId = ${userId}`
+	)
+	
+	const arrayPrice = data.map(dataRow => {
+		return dataRow['ProductPrice'] * dataRow['Quantity'];
+	});
+
+	const totalPrice = arrayPrice.reduce((partialSum, a) => partialSum + a, 0)
+
+	res.status(200).send({totalPrice: totalPrice});
+})
 
 app.listen(3002, () => {
   	console.log('Server running on port 3002');
