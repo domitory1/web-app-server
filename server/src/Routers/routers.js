@@ -1,7 +1,13 @@
 const express = require('express');
-const router = express.Router();
 const authentificateToken = require('../JWT/verifyToken');
-const queryDataBase = require('../DB/connection');
+const { queryDataBase } = require('../DB/connection');
+
+const routerPriceList = express.Router();
+const routerProductInBusket = express.Router();
+const routerAddTBusket = express.Router();
+const routerIncreaseQuantity = express.Router();
+const routerReduceNumber = express.Router();
+const routerOrder = express.Router();
 
 function convert(list) {
     list.forEach(row => {
@@ -12,8 +18,8 @@ function convert(list) {
     return list;
 }
 
-router.get('/priceList', authentificateToken, async(req, res) => {
-    const userId =req.jwt.user['id'];
+routerPriceList.get('/priceList', authentificateToken, async(req, res) => {
+    const userId = req.jwt.user['id'];
     let productCategory;
     let productsMenu;
 
@@ -21,9 +27,9 @@ router.get('/priceList', authentificateToken, async(req, res) => {
         productCategory = await queryDataBase(`SELECT * FROM categories`);
         productsMenu = await queryDataBase(`SELECT p.*, b.Quantity 
                                         FROM priceList p 
-                                        LEFT JOIN busket b ON p.ProductId = m.ProductId 
-                                        WHERE b.UserId = ? 
-                                        UNION 
+                                        LEFT JOIN busket b ON p.ProductId = b.ProductId 
+                                        WHERE b.UserId = ?
+                                        UNION
                                         SELECT p.*, b.Quantity 
                                         FROM priceList p 
                                         LEFT JOIN busket b ON p.ProductId = b.ProductId 
@@ -41,7 +47,7 @@ router.get('/priceList', authentificateToken, async(req, res) => {
     return res.status(200).json([productCategory, productsMenu]);
 })
 
-router.get('/productInBusket', authentificateToken, async(req, res) => {
+routerProductInBusket.get('/productInBusket', authentificateToken, async(req, res) => {
     const userId = req.jwt.user['id'];
     let productsBusket;
 
@@ -57,8 +63,8 @@ router.get('/productInBusket', authentificateToken, async(req, res) => {
                                     'на кофе! Он так старательно собирал информацию о ваших любимых блюдах, что немного перестарался. ' +
                                     'Обещаем, что наш трудоголик скоро вернется к работе, полный сил и энтузиазма!'})
     }
-
-    if (productsBusket.lenght > 0) {
+    
+    if (productsBusket.length > 0) {
         productsBusket = convert(productsBusket);
         return res.status(200).json(productsBusket)
     } else {
@@ -66,7 +72,7 @@ router.get('/productInBusket', authentificateToken, async(req, res) => {
     }
 })
 
-router.post('/addToBusket', authentificateToken, async(req, res) => {
+routerAddTBusket.post('/addToBusket', authentificateToken, async(req, res) => {
     const userId = req.jwt.user['id'];
     const productId = req.body['productId'];
 
@@ -83,7 +89,7 @@ router.post('/addToBusket', authentificateToken, async(req, res) => {
     return res.sendStatus(200);
 })
 
-router.post('/increaseQuantity', authentificateToken, async(req, res) => {
+routerIncreaseQuantity.post('/increaseQuantity', authentificateToken, async(req, res) => {
     const userId = req.jwt.user['id'];
     const productId = req.body['productId']
     let quantity;
@@ -98,10 +104,10 @@ router.post('/increaseQuantity', authentificateToken, async(req, res) => {
             'Обещаем, что наш трудоголик скоро вернется к работе, полный сил и энтузиазма!'})
     }
 
-    return res.status(200).json({quantity: quantity});
+    return res.status(200).json({quantity: quantity[0]['Quantity']});
 })
 
-router.post('/resuceNumber', authentificateToken, async(req, res) => {
+routerReduceNumber.post('/reduceNumber', authentificateToken, async(req, res) => {
     const userId = req.jwt.user['id'];
     const productId = req.body['productId'];
     let quantity;
@@ -136,15 +142,15 @@ router.post('/resuceNumber', authentificateToken, async(req, res) => {
                                         ' что немного перестарался. Обещаем, что наш трудоголик скоро вернется к работе, '+
                                         'полный сил и энтузиазма!'});
         }
-        return res.status(200).json({price: price});
+        return res.status(200).json({price: price[0]['ProductPrice']});
     } else {
         return res.status(200).json({quantity: quantity[0]['Quantity']})
     }
 })
 
-router.get('/order', authentificateToken, async(req, res) => {
+routerOrder.get('/order', authentificateToken, async(req, res) => {
     const userId = req.jwt.user['id'];
-    const hour = req['_startTime'].getHour();
+    const hour = req['_startTime'].getHours();
     const minutes = req['_startTime'].getMinutes();
 
     if (hour < 8 && minutes < 30 || hour > 17 && minutes > 30) {
@@ -172,4 +178,4 @@ router.get('/order', authentificateToken, async(req, res) => {
     res.status(200).json({totalPrice: totalPrice});
 })
 
-module.exports = router; 
+module.exports = {routerPriceList, routerProductInBusket, routerAddTBusket, routerIncreaseQuantity, routerReduceNumber, routerOrder}; 

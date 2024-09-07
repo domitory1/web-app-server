@@ -1,217 +1,29 @@
 const express = require('express');
 const morgan = require('morgan');
-const mysql = require('mysql2/promise');
+const { connectDB } = require('./src/DB/connection');
+const { routerPriceList, routerProductInBusket, routerAddTBusket, routerIncreaseQuantity, routerReduceNumber, routerOrder } = require('./src/Routers/routers')
 const bodyParser = require('body-parser');
-const jwt = require('jsonwebtoken');
 const app = express();
 
 app.use(morgan('dev'));
 //app.use(morgan('combined'));
 app.use(bodyParser.json());
 app.use(express.json());
-
+app.use(bodyParser.urlencoded({ extended: false }));
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
 	res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
 	res.header('Access-Control-Allow-Headers', 'Authorization, Origin, X-Requested-With, Content-Type, Accept');
 	next();
 });
+app.use('/data', routerPriceList);
+app.use('/data', routerProductInBusket);
+app.use('/data', routerAddTBusket);
+app.use('/data', routerIncreaseQuantity);
+app.use('/data', routerReduceNumber);
+app.use('/data', routerOrder);
 
-const JWT_KEY = 'FMXF15Uz-m6*P0bVh-5&7Se*nf-ow!HXwbi';
-
-const pool = mysql.createPool({
-	host: '127.0.0.1',
-	user: 'root',
-	password: 'root',
-	database: 'webappmenu',
-	charset: 'utf8mb4',
-	connectionLimit: 10,
-});
-
-const queryDatabase = async (query) => {
-	const connection = await pool.getConnection();
-	try {
-		const [rows] = await connection.query(query);
-		return rows;
-	} finally {
-		connection.release();
-	}
-}
-
-function authentificateToken(req, res, next) {
-	const authHeader = req.headers['authorization'];
-	const token = authHeader && authHeader.split(' ')[1];
-	if (token == null) return res.sendStatus(401);
-
-	jwt.verify(token, JWT_KEY, (err, jwt) => {
-		if (err){
-			console.log(err);
-			return res.sendStatus(401)
-		};
-		if (jwt.type === 'refresh') {
-			console.log("TokenNotValidError: jwt is refresh")
-			return res.sendStatus(401);
-		};
-		const JWTInDB = queryDatabase(`SELECT \`JTI\` FROM \`jwt_whitelist\` WHERE \`JTI\` = '${jwt.jti}'`);
-		if (JWTInDB === null) return res.sendStatus(401);
-		req.jwt = jwt;
-		next();
-	});
-}
-
-pool.getConnection()
-	.then(connection => {
-		console.log('Connection to MySQL database');
-		connection.release();
-	})
-	.catch(error => {
-		console.log('Error connection to MySQL: ', error);
-	});
-
-app.use(bodyParser.urlencoded({ extended: false }));
-
-app.get('/data/priceList', authentificateToken, async (req, res) => {
-	const userId = parseInt(req.jwt.user['id']);
-
-	try {
-		const productCategory = await queryDatabase('SELECT * FROM `categories`');
-		const priceList = await queryDatabase('SELECT * FROM `pricelist`');
-		const productInBusket = await queryDatabase(`SELECT * FROM \`busket\` WHERE \`UserId\` = ${userId}`)
-		for (let productIndex = 0; productIndex < priceList.length; productIndex++) {
-			for (let productIndexBusket = 0; productIndexBusket < productInBusket.length; productIndexBusket++) {
-				if (userId === productInBusket[productIndexBusket]['UserId'] && priceList[productIndex]['ProductId'] === productInBusket[productIndexBusket]['ProductId']){
-					priceList[productIndex]["Quantity"] = `${productInBusket[productIndexBusket]['Quantity']}`;
-				}
-			}
-		}
-		priceList.forEach(item => {
-			if (item.ProductPhoto instanceof Buffer) {
-				item.ProductPhoto = item.ProductPhoto.toString('base64');
-			}
-		});
-		res.json([productCategory, priceList]);
-	} catch (error) {
-		console.error('Error fetching data from MySQL:', error);
-		res.status(500).json({err: 'Ой-ой, кажется, наш сервер решил устроить себе небольшой перерывчик на кофе! Он так старательно собирал информацию о ваших любимых блюдах, что немного перестарался. Обещаем, что наш трудоголик скоро вернется к работе, полный сил и энтузиазма!'});
-	}
-});
-
-app.get('/data/productInBusket', authentificateToken, async(req, res) => {
-	const userId = parseInt(req.jwt.user['id']);
-	try {
-		const productsInBusket = await queryDatabase(`SELECT \`ProductId\`, \`Quantity\` FROM \`busket\` WHERE \`UserId\` = ${userId}`);
-		if (productsInBusket.length > 0) {
-			const result = await queryDatabase(`SELECT * FROM \`pricelist\` WHERE \`ProductId\` IN (${productsInBusket.map(item => item['ProductId'])})`);
-			for (let i=0; i < productsInBusket.length; i++) {
-				for (let j=0; j < result.length; j++) {
-					if (productsInBusket[i]['ProductId'] === result[j]['ProductId']) {
-						result[j]['Quantity'] = productsInBusket[i]['Quantity'];
-					}
-				}
-			}
-			result.forEach(item => {
-				if (item.ProductPhoto instanceof Buffer) {
-					item.ProductPhoto = item.ProductPhoto.toString('base64');
-				}
-			});
-			res.status(200).json(result);
-		} else {
-			res.status(200).json([]);
-		}
-		
-	} catch (error) {
-		console.error('Error fetching data from MySQL:', error);
-		res.status(500).send({err: 'Ой-ой, кажется, наш сервер решил устроить себе небольшой перерывчик на кофе! Он так старательно собирал информацию о ваших любимых блюдах, что немного перестарался. Обещаем, что наш трудоголик скоро вернется к работе, полный сил и энтузиазма!'});
-	}
-})
-
-app.post('/data/addToBusket', authentificateToken, async (req, res) => {
-	const userId = req.jwt.user['id'];
-	const productId = req.body['productId'];
-	try {
-		const result = await queryDatabase(
-			`INSERT INTO busket (\`UserId\`, \`ProductId\`, \`Quantity\`) VALUES ('${userId}', '${productId}', 1)`
-		);
-		// Вспомнить, используется ли contentButtonSpace
-		res.status(200).json({
-			contentButtonSpace: '<button class="buttonReduce">-</button> <input class="quantity" readonly value = 1> <button class="buttonIncrease">+</button>'
-		});
-	} catch (error) {
-		console.error('Error adding item to MySQL:', error);
-		res.status(500).send({err: 'Ой-ой, кажется, наш сервер решил устроить себе небольшой перерывчик на кофе! Он так старательно добавлял блюда в корзину, что немного перестарался. Обещаем, что наш трудоголик скоро вернется к работе, полный сил и энтузиазма!'});
-	}
-});
-
-app.post('/data/increaseQuantity', authentificateToken, async (req, res) => {
-	const userId = req.jwt.user['id'];
-	const productId  = req.body['productId'];
-	try {
-		await queryDatabase(
-			`UPDATE busket SET \`Quantity\` = \`Quantity\` + 1 WHERE \`UserId\` = ${userId} AND \`ProductId\` = '${productId}'`
-		);
-		const quantity = await queryDatabase(`SELECT \`Quantity\` FROM \`busket\` WHERE \`UserId\` = ${userId} AND \`ProductId\` = '${productId}'`)
-		res.status(200).json({
-			quantity: quantity[0]['Quantity']
-		});
-	} catch (error) {
-		console.error('Error adding item to MySQL:', error);
-		res.status(500).send({err: 'Ой-ой, кажется, наш сервер решил устроить себе небольшой перерывчик на кофе! Он так старательно добавлял блюда в корзину, что немного перестарался. Обещаем, что наш трудоголик скоро вернется к работе, полный сил и энтузиазма!'});
-	}
-});
-
-app.post('/data/reduceNumber', authentificateToken, async (req, res) => {
-	const userId = req.jwt.user['id'];
-	const productId = req.body['productId'];
-	try {
-		await queryDatabase(
-			`UPDATE busket SET \`Quantity\` = if(\`Quantity\` != 0, \`Quantity\` - 1, 0) WHERE \`UserId\` = ${userId} AND \`ProductId\` = '${productId}'`
-		);
-		const quantity = await queryDatabase(
-			`SELECT \`Quantity\` FROM \`busket\` WHERE \`UserId\` = ${userId} AND \`ProductId\` = '${productId}'`
-		);
-		if (quantity[0]['Quantity'] != 0){
-			res.status(200).json({
-				quantity: quantity[0]['Quantity']
-			});
-		} else {
-			await queryDatabase(
-				`DELETE FROM \`busket\` WHERE \`UserId\` = ${userId} AND \`ProductId\` = '${productId}'`
-			);
-			const price = await queryDatabase(
-				`SELECT \`ProductPrice\` FROM \`pricelist\` WHERE  \`ProductId\` = '${productId}'`
-			);
-			res.status(200).json({
-				contentButtonSpace: `<button class="buttonAddToBusket">${price[0]['ProductPrice']} ₽</button>`
-			});
-		}
-
-	} catch (error) {
-		console.error('Error adding item to MySQL:', error);
-		res.status(500).send({err: 'Ой-ой, кажется, наш сервер решил устроить себе небольшой перерывчик на кофе! Он так старательно убирал блюда из корзины, что немного перестарался. Обещаем, что наш трудоголик скоро вернется к работе, полный сил и энтузиазма!'});
-	}
-});
-
-app.get("/data/order", authentificateToken, async(req, res) => {
-	const userId = req.jwt.user['id'];
-	const hour = req['_startTime'].getHours();
-	const minutes = req['_startTime'].getMinutes();
-
-	if (hour < 8 && minutes < 30 && hour > 17 && minutes > 30) {
-		res.status(503).send("Сервер спит после тяжелого рабочего дня.\nПопробуйте еще раз в рабочее время");
-	}
-
-	const data = await queryDatabase(
-		`SELECT p.ProductPrice, b.Quantity FROM priceList p JOIN busket b ON p.ProductId = b.ProductId WHERE b.UserId = ${userId}`
-	)
-	
-	const arrayPrice = data.map(dataRow => {
-		return dataRow['ProductPrice'] * dataRow['Quantity'];
-	});
-
-	const totalPrice = arrayPrice.reduce((partialSum, a) => partialSum + a, 0)
-
-	res.status(200).send({totalPrice: totalPrice});
-})
+connectDB();
 
 app.listen(3002, () => {
   	console.log('Server running on port 3002');
