@@ -24,7 +24,10 @@ const authentificateToken = (req, res, next) => {
 			console.log('Error selecting to MySQL:', error);
 			return res.status(500).json({err: 'Ой. Что-то пошло не так'});
 		}
-		if (JWTInDB === null) return res.sendStatus(401);
+		if (JWTInDB === null) {
+			console.log("TokenNotValidError: token is null")
+			return res.sendStatus(401)
+		};
 		req.jwt = jwt;
 		next();
 	});

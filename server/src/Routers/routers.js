@@ -8,6 +8,7 @@ const routerAddTBusket = express.Router();
 const routerIncreaseQuantity = express.Router();
 const routerReduceNumber = express.Router();
 const routerOrder = express.Router();
+const routerMakeOrder = express.Router();
 
 function convert(list) {
     list.forEach(row => {
@@ -161,8 +162,10 @@ routerOrder.get('/order', authentificateToken, async(req, res) => {
 
     try {
         data = await queryDataBase(`SELECT p.ProductPrice, b.Quantity 
-            FROM priceList p JOIN busket b ON p.ProductId = b.ProductId 
-            WHERE b.UserId = ?`, [userId]);
+                                    FROM priceList p JOIN busket b ON p.ProductId = b.ProductId 
+                                    WHERE b.UserId = ?`, [userId]);
+        phoneNumber = await queryDataBase(`SELECT NumberPhone FROM users WHERE UserId = ?`, [userId]);
+
     } catch (error) {
         console.error('Error get order to MySQL:', error);
         res.status(500).json({err: "Ой, что-то пошло не так"})
@@ -175,7 +178,30 @@ routerOrder.get('/order', authentificateToken, async(req, res) => {
 
     const totalPrice = arrayPrice.reduce((partialSum, a) => partialSum + a, 0);
 
-    res.status(200).json({totalPrice: totalPrice});
+    res.status(200).json({totalPrice: totalPrice, phoneNumber: phoneNumber[0]['NumberPhone']});
 })
 
-module.exports = {routerPriceList, routerProductInBusket, routerAddTBusket, routerIncreaseQuantity, routerReduceNumber, routerOrder}; 
+routerMakeOrder.post('makeOrder', authentificateToken, async(req, res) => {
+    const userId = req.jwt.user['id'];
+
+    try {
+        const data = await queryDataBase(`SELECT b.ProductId, b.Quantity, p.productPrice 
+                                        FROM busket b 
+                                        JOIN pricelist p ON b.ProducId = p.ProductId 
+                                        WHERE b.UserId = ?`, [userId])
+        /*
+        await queryDataBase(`INSERT INTO orders
+                            (UserId, ProductsId)
+                            VALUES (?, '{
+                                            "ProductId": ?,
+                                            "Quantity": ?,
+                                            "ProductPrice": ?
+                                        }')`, [userId])
+        */
+    } catch (error) {
+        console.error('Error get order to MySQL:', error);
+        res.status(500).json({err: "Ой, что-то пошло не так"})
+    }
+})
+
+module.exports = {routerPriceList, routerProductInBusket, routerAddTBusket, routerIncreaseQuantity, routerReduceNumber, routerOrder, routerMakeOrder}; 

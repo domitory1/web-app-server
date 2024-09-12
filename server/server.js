@@ -1,7 +1,7 @@
 const express = require('express');
 const morgan = require('morgan');
 const { connectDB } = require('./src/DB/connection');
-const { routerPriceList, routerProductInBusket, routerAddTBusket, routerIncreaseQuantity, routerReduceNumber, routerOrder } = require('./src/Routers/routers')
+const { routerPriceList, routerProductInBusket, routerAddTBusket, routerIncreaseQuantity, routerReduceNumber, routerOrder, routerMakeOrder } = require('./src/Routers/routers')
 const bodyParser = require('body-parser');
 const app = express();
 
@@ -22,6 +22,7 @@ app.use('/data', routerAddTBusket);
 app.use('/data', routerIncreaseQuantity);
 app.use('/data', routerReduceNumber);
 app.use('/data', routerOrder);
+app.use('/data', routerOrder)
 
 connectDB();
 
